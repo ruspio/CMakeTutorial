@@ -1,0 +1,18 @@
+# Automatically detect and normalize text files
+* text=auto
+
+# CMake
+CMakeLists.txt text eol=lf
+*.cmake text eol=lf
+
+# C/C++
+*.c text eol=lf
+*.cpp text eol=lf
+*.h text eol=lf
+*.hpp text eol=lf
+
+# Documentation and configuration
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf

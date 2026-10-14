@@ -1,0 +1,16 @@
+# CMake build directories
+build/
+**/build/
+cmake-build-*/
+**/cmake-build-*/
+
+# Local CMake user presets
+CMakeUserPresets.json
+**/CMakeUserPresets.json
+
+# Visual Studio generated files
+.vs/
+**/.vs/
+
+# Local VS Code configuration inside example projects
+projects/**/.vscode/

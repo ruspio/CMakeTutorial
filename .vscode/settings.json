@@ -1,0 +1,8 @@
+
+{
+    "cmake.sourceDirectory": [
+        "${workspaceFolder}/projects/Calculator"
+    ],
+    "cmake.generator": "Ninja",
+    "cmake.buildDirectory": "${sourceDirectory}/build/${buildType}"
+}
