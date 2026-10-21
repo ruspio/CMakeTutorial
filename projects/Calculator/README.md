@@ -2,7 +2,7 @@
 
 A small C++20 application used to learn **Modern CMake** through incremental exercises.
 
-**Current stage: v0.6.0** — a multi-directory project demonstrating private implementation dependencies between a static math library and a header-only `INTERFACE` utility library.
+**Current stage: v0.7.0** — a multi-directory project with a shared math library (DLL/SO), a private header-only `INTERFACE` dependency, and explicit build-output directories.
 
 ## Project layout
 
@@ -26,21 +26,21 @@ Calculator/
             └── number_utils.h
 ```
 
-The root `CMakeLists.txt` declares the project (`Calculator`, version `0.6.0`) and includes the `math`, `app`, and `utils` modules using `add_subdirectory()`.
+The root `CMakeLists.txt` declares the project (`Calculator`, version `0.7.0`) and includes the `math`, `app`, and `utils` modules using `add_subdirectory()`.
 
 ## CMake targets
 
 | Target | Kind | Responsibility |
 | --- | --- | --- |
 | `CalculatorApp` | `EXECUTABLE` | Compiles `app/main.cpp` and demonstrates the public math API |
-| `CalculatorMath` | `STATIC` | Compiles `math/src/math.cpp` and provides `add(int, int)` and `add_many(std::span<const int>)` |
+| `CalculatorMath` | `SHARED` | Compiles `math/src/math.cpp` and exports `add(int, int)` and `add_many(std::span<const int>)` |
 | `CalculatorUtils` | `INTERFACE` | Provides the header-only `calculator::sum(std::span<const int>)` implementation |
 
 ### Dependency graph
 
 ```text
 CalculatorApp (EXECUTABLE)
-└── PRIVATE -> CalculatorMath (STATIC)
+└── PRIVATE -> CalculatorMath (SHARED)
                ├── PUBLIC include directory: math/include/
                ├── PUBLIC C++20 requirement
                └── PRIVATE -> CalculatorUtils (INTERFACE)
@@ -56,7 +56,7 @@ CalculatorApp (EXECUTABLE)
 - **`PUBLIC`** requirements apply to the target and are passed to consumers.
 - **`INTERFACE`** requirements are passed to consumers without being applied to the target's own compilation.
 
-For static libraries, a private link dependency can still be carried forward as a link-only dependency needed when linking the final executable. This does **not** expose the private dependency's include directories or compile features to the executable.
+The shared `CalculatorMath` library compiles the inline utility implementation as needed. It does not require a separate `CalculatorUtils` DLL or SO. The `PRIVATE` dependency does **not** propagate `CalculatorUtils` include directories to the application.
 
 `CalculatorUtils` has no `.cpp` file and produces no `.lib` or `.a` artifact. It is still a first-class CMake target carrying usage requirements.
 
@@ -106,13 +106,13 @@ cmake --build build/Debug
 Windows (PowerShell):
 
 ```powershell
-.\build\Debug\app\CalculatorApp.exe
+.\build\Debug\bin\CalculatorApp.exe
 ```
 
 Ubuntu:
 
 ```bash
-./build/Debug/app/CalculatorApp
+./build/Debug/bin/CalculatorApp
 ```
 
 To configure Release separately:
@@ -124,6 +124,47 @@ cmake --build build/Release
 
 When using MSVC and Ninja from a Windows terminal, run in an initialized MSVC development environment. VS Code with CMake Tools can select the MSVC kit for you.
 
+### Shared-library outputs
+
+The application and the math library use explicit output directories set with `set_target_properties()`:
+
+| CMake property | Target(s) | Destination |
+| --- | --- | --- |
+| `RUNTIME_OUTPUT_DIRECTORY` | `CalculatorApp`, `CalculatorMath` | `${CMAKE_BINARY_DIR}/bin` |
+| `LIBRARY_OUTPUT_DIRECTORY` | `CalculatorMath` | `${CMAKE_BINARY_DIR}/lib` |
+| `ARCHIVE_OUTPUT_DIRECTORY` | `CalculatorMath` | `${CMAKE_BINARY_DIR}/lib` |
+
+With Ninja and MSVC, the relevant files are:
+
+```text
+build/Debug/
+├── bin/
+│   ├── CalculatorApp.exe
+│   └── CalculatorMath.dll
+└── lib/
+    └── CalculatorMath.lib  # DLL import library
+```
+
+On Ubuntu with GCC, expect:
+
+```text
+build/Debug/
+├── bin/
+│   └── CalculatorApp
+└── lib/
+    └── libCalculatorMath.so
+```
+
+On Windows, the DLL is classified by CMake as a **runtime** output, while its `.lib` import library is an **archive** output. Placing the DLL next to the EXE lets the Windows loader find it without a manual `PATH` change. On Linux, CMake normally sets a build-tree RPATH so the executable can locate the SO in the build tree.
+
+Directories such as `build/Debug/app/` and `build/Debug/math/` are **expected**: `add_subdirectory()` creates corresponding build directories, which hold intermediate files (e.g., `.obj`). Output-directory properties do not move those intermediate files.
+
+`CalculatorMath` currently uses `WINDOWS_EXPORT_ALL_SYMBOLS ON` to export its global functions for the MSVC DLL build. This is a convenient learning-stage setting; a later exercise will implement explicit API exports via `GenerateExportHeader`.
+
+### DLL loading experiment (Windows)
+
+Before moving both runtime outputs into `bin/`, `CalculatorApp.exe` could not find `CalculatorMath.dll` in the separate `math/` directory. It exited with `-1073741515` (`0xC0000135`, missing DLL). Adding the DLL directory to `PATH` made the executable work and return exit code `0`. Configuring both runtime targets to output into `bin/` fixed the layout without a manual `PATH` change.
+
 ## Exercise history
 
 | Version | Topic |
@@ -134,6 +175,7 @@ When using MSVC and Ninja from a Windows terminal, run in an initialized MSVC de
 | `0.4.0` | Modular build using `add_subdirectory()` |
 | `0.5.0` | Header-only `CalculatorUtils` with `add_library(... INTERFACE)` |
 | `0.6.0` | `add_many()` and transitive usage requirements; `PRIVATE` vs `PUBLIC` library dependencies |
+| `0.7.0` | `SHARED` math library, `WINDOWS_EXPORT_ALL_SYMBOLS`, runtime DLL loading and output directories |
 
 Previous stages are learning milestones; they are not duplicated in separate source directories. Git history starts with the actual first commit rather than reconstructing earlier commits.
 

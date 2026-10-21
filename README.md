@@ -11,7 +11,7 @@ Development environments:
 
 | Project | Topics | Status |
 | --- | --- | --- |
-| [Calculator](projects/Calculator/README.md) | Executables, static and header-only libraries, subdirectories, target usage requirements | **v0.5.0 — complete** |
+| [Calculator](projects/Calculator/README.md) | Executables, static and header-only libraries, subdirectories, target usage requirements | **v0.7.0 — complete** |
 | Logger | Reusable libraries, public APIs, shared libraries | Planned |
 | DataProcessor | External dependencies, CTest, automated tests | Planned |
 | PackageDemo | CMake presets, installation, target exports, packaging | Planned |

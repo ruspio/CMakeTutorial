@@ -9,3 +9,8 @@ target_link_libraries(CalculatorApp
     PRIVATE
         CalculatorMath
 )
+
+set_target_properties(CalculatorApp
+    PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)

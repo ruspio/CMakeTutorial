@@ -1,4 +1,4 @@
-add_library(CalculatorMath STATIC)
+add_library(CalculatorMath SHARED)
 
 target_sources(CalculatorMath
     PRIVATE
@@ -18,4 +18,12 @@ target_include_directories(CalculatorMath
 target_link_libraries(CalculatorMath
     PRIVATE
         CalculatorUtils
+)
+
+set_target_properties(CalculatorMath
+    PROPERTIES
+        WINDOWS_EXPORT_ALL_SYMBOLS ON
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 )
