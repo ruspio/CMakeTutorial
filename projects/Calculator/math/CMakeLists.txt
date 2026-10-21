@@ -14,3 +14,8 @@ target_include_directories(CalculatorMath
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
+
+target_link_libraries(CalculatorMath
+    PRIVATE
+        CalculatorUtils
+)

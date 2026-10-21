@@ -8,5 +8,4 @@ target_sources(CalculatorApp
 target_link_libraries(CalculatorApp
     PRIVATE
         CalculatorMath
-        CalculatorUtils
 )
