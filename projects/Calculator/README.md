@@ -2,7 +2,7 @@
 
 A small C++20 application used to learn **Modern CMake** through incremental exercises.
 
-**Current stage: v0.7.0** — a multi-directory project with a shared math library (DLL/SO), a private header-only `INTERFACE` dependency, and explicit build-output directories.
+**Current stage: v0.7.0** — a multi-directory project with a shared math library (DLL/SO), a private header-only `INTERFACE` dependency, explicit symbol exports via `GenerateExportHeader`, and portable build-output directories.
 
 ## Project layout
 
@@ -42,6 +42,7 @@ The root `CMakeLists.txt` declares the project (`Calculator`, version `0.7.0`) a
 CalculatorApp (EXECUTABLE)
 └── PRIVATE -> CalculatorMath (SHARED)
                ├── PUBLIC include directory: math/include/
+               ├── PUBLIC generated header directory: build/Debug/math/
                ├── PUBLIC C++20 requirement
                └── PRIVATE -> CalculatorUtils (INTERFACE)
                               ├── INTERFACE include directory: utils/include/
@@ -81,7 +82,7 @@ int main()
 }
 ```
 
-The public `calculator_math.h` declares `add_many(std::span<const int>)` and includes `<span>`, but does **not** include `calculator/number_utils.h`.
+The public `calculator_math.h` declares `add_many(std::span<const int>)` and includes `<span>` and the generated `calculator_math_export.h`, but does **not** include `calculator/number_utils.h`. Both `add()` and `add_many()` are marked with `CALCULATOR_MATH_EXPORT`.
 
 Internally, `math/src/math.cpp` implements `add_many()` using `calculator::sum(values)` from `CalculatorUtils`. `std::span` is part of **C++20**; `CalculatorMath` publicly declares its C++20 requirement because its public API uses that feature.
 
@@ -159,7 +160,56 @@ On Windows, the DLL is classified by CMake as a **runtime** output, while its `.
 
 Directories such as `build/Debug/app/` and `build/Debug/math/` are **expected**: `add_subdirectory()` creates corresponding build directories, which hold intermediate files (e.g., `.obj`). Output-directory properties do not move those intermediate files.
 
-`CalculatorMath` currently uses `WINDOWS_EXPORT_ALL_SYMBOLS ON` to export its global functions for the MSVC DLL build. This is a convenient learning-stage setting; a later exercise will implement explicit API exports via `GenerateExportHeader`.
+### Explicit shared-library exports (`GenerateExportHeader`)
+
+The library does **not** use `WINDOWS_EXPORT_ALL_SYMBOLS`. Instead, `math/CMakeLists.txt` loads the built-in CMake module and generates export declarations for the public API:
+
+```cmake
+include(GenerateExportHeader)
+
+generate_export_header(CalculatorMath
+    BASE_NAME calculator_math
+)
+```
+
+This produces `calculator_math_export.h` in `${CMAKE_CURRENT_BINARY_DIR}` (e.g., `build/Debug/math/`). The header is generated during CMake configuration and should **not** be checked into Git. It is included from the public source header:
+
+```cpp
+#pragma once
+
+#include <span>
+#include "calculator_math_export.h"
+
+CALCULATOR_MATH_EXPORT int add(int a, int b);
+CALCULATOR_MATH_EXPORT int add_many(std::span<const int> values);
+```
+
+Both the source include directory and the binary directory containing the generated header are exposed as `PUBLIC` include directories. This is required because consumers include `calculator_math.h`, which in turn includes `calculator_math_export.h`.
+
+The `CalculatorMath` target also sets:
+
+```cmake
+CXX_VISIBILITY_PRESET hidden
+VISIBILITY_INLINES_HIDDEN YES
+```
+
+On compilers that support these visibility settings (such as GCC), symbols are hidden by default and the explicit export macro marks public symbols as visible. On Windows, the generated macro selects `__declspec(dllexport)` when building the DLL and `__declspec(dllimport)` when consuming it. These are **target-local** properties, not global compiler flags.
+
+On Windows with the Visual Studio developer tools, exports can be inspected with:
+
+```powershell
+dumpbin /exports .\build\Debug\bin\CalculatorMath.dll
+```
+
+On Ubuntu, use:
+
+```bash
+nm -D --defined-only build/Debug/lib/libCalculatorMath.so | c++filt
+```
+
+The exported math API should contain `add(int, int)` and `add_many(std::span<const int>)` (demangled types may display template details). Removing `CALCULATOR_MATH_EXPORT` from the `add_many()` declaration is an instructive negative test: with hidden visibility on GCC, the shared library builds, but linking the application fails because `add_many()` is not exported. Restore the macro after testing.
+
+This project is currently used directly from the build tree. Installing or packaging the library for use elsewhere will require installation rules for both the public source header and the generated export header, together with appropriate build/install include interfaces.
 
 ### DLL loading experiment (Windows)
 
@@ -175,7 +225,7 @@ Before moving both runtime outputs into `bin/`, `CalculatorApp.exe` could not fi
 | `0.4.0` | Modular build using `add_subdirectory()` |
 | `0.5.0` | Header-only `CalculatorUtils` with `add_library(... INTERFACE)` |
 | `0.6.0` | `add_many()` and transitive usage requirements; `PRIVATE` vs `PUBLIC` library dependencies |
-| `0.7.0` | `SHARED` math library, `WINDOWS_EXPORT_ALL_SYMBOLS`, runtime DLL loading and output directories |
+| `0.7.0` | `SHARED` math library; DLL loading, output directories and explicit API exports with `GenerateExportHeader` |
 
 Previous stages are learning milestones; they are not duplicated in separate source directories. Git history starts with the actual first commit rather than reconstructing earlier commits.
 
@@ -184,5 +234,6 @@ Previous stages are learning milestones; they are not duplicated in separate sou
 - The header is named `calculator_math.h` rather than `math.h` to avoid shadowing the standard C header.
 - `CalculatorMath` keeps `CalculatorUtils` as a private implementation detail; its public API does not include utility-library headers.
 - Libraries declare the include paths and language features that their consumers require.
+- `CalculatorMath` explicitly marks its exported functions; non-API symbols are hidden by default where supported.
 - The project uses portable CMake paths, with no hardcoded MSVC or GCC options.
 - There are currently no automated tests, external package dependencies or installation rules. Those are topics for later lessons.

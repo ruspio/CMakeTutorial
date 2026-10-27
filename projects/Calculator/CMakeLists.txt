@@ -5,6 +5,6 @@ project(Calculator
     LANGUAGES CXX
 )
 
+add_subdirectory(utils)
 add_subdirectory(math)
 add_subdirectory(app)
-add_subdirectory(utils)
