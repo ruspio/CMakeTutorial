@@ -1,0 +1,127 @@
+
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 25,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/${hostSystemName}/${presetName}"
+        },
+        {
+            "name": "windows",
+            "hidden": true,
+            "inherits": "base",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            },
+            "cacheVariables": {
+                "CMAKE_CXX_COMPILER": "cl"
+            }
+        },
+        {
+            "name": "linux",
+            "hidden": true,
+            "inherits": "base",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            },
+            "cacheVariables": {
+                "CMAKE_CXX_COMPILER": "g++"
+            }
+        },
+        {
+            "name": "config-debug",
+            "hidden": true,
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "config-release",
+            "hidden": true,
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "win-debug",
+            "displayName": "Windows MSVC Debug",
+            "inherits":[
+                "windows", 
+                "config-debug"
+            ]
+        },
+        {
+            "name": "win-release",
+            "displayName": "Windows MSVC Release",
+            "inherits":[
+                "windows", 
+                "config-release"
+            ]
+        },
+        {
+            "name": "linux-debug",
+            "displayName": "Linux g++ Debug",
+            "inherits":[
+                "linux", 
+                "config-debug"
+            ]
+        },
+        {
+            "name": "linux-release",
+            "displayName": "Linux g++ Release",
+            "inherits":[
+                "linux", 
+                "config-release"
+            ]
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "win-debug",
+            "configurePreset": "win-debug",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "win-release",
+            "configurePreset": "win-release",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "linux-debug",
+            "configurePreset": "linux-debug",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "linux-release",
+            "configurePreset": "linux-release",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        }
+    ]
+}

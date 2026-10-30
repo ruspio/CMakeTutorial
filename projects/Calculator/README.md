@@ -2,13 +2,14 @@
 
 A small C++20 application used to learn **Modern CMake** through incremental exercises.
 
-**Current stage: v0.7.0** — a multi-directory project with a shared math library (DLL/SO), a private header-only `INTERFACE` dependency, explicit symbol exports via `GenerateExportHeader`, and portable build-output directories.
+**Current stage: v0.8.0** — a multi-directory C++20 project with a `SHARED` math library (DLL/SO), a private header-only `INTERFACE` dependency, explicit symbol exports via `GenerateExportHeader`, and cross-platform Debug/Release CMake Presets.
 
 ## Project layout
 
 ```text
 Calculator/
 ├── CMakeLists.txt
+├── CMakePresets.json
 ├── README.md
 ├── app/
 │   ├── CMakeLists.txt
@@ -26,7 +27,7 @@ Calculator/
             └── number_utils.h
 ```
 
-The root `CMakeLists.txt` declares the project (`Calculator`, version `0.7.0`) and includes the `math`, `app`, and `utils` modules using `add_subdirectory()`.
+The root `CMakeLists.txt` declares the project (`Calculator`, version `0.8.0`) and includes the `math`, `app`, and `utils` modules using `add_subdirectory()`. The project-local `CMakePresets.json` defines repeatable configurations for Windows and Linux.
 
 ## CMake targets
 
@@ -42,7 +43,7 @@ The root `CMakeLists.txt` declares the project (`Calculator`, version `0.7.0`) a
 CalculatorApp (EXECUTABLE)
 └── PRIVATE -> CalculatorMath (SHARED)
                ├── PUBLIC include directory: math/include/
-               ├── PUBLIC generated header directory: build/Debug/math/
+               ├── PUBLIC generated header directory: build/<OS>/<preset>/math/
                ├── PUBLIC C++20 requirement
                └── PRIVATE -> CalculatorUtils (INTERFACE)
                               ├── INTERFACE include directory: utils/include/
@@ -95,35 +96,89 @@ Sum = 10
 
 ## Build
 
-Requirements: **CMake 3.25+**, **Ninja**, and a **C++20-capable compiler** (MSVC on Windows or GCC on Ubuntu).
+Requirements: **CMake 3.25+**, **Ninja**, and a **C++20-capable compiler** (MSVC on Windows or GCC on Ubuntu). Run commands from the `projects/Calculator/` directory.
 
-From the `projects/Calculator/` directory:
+### CMake Presets
 
-```bash
-cmake -S . -B build/Debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
-cmake --build build/Debug
+`CMakePresets.json` provides reusable configuration for both platforms. The current file uses schema `version: 3`, hidden presets, inheritance and OS conditions.
+
+| Configure preset | Host | Compiler | Build type | Build directory |
+| --- | --- | --- | --- | --- |
+| `win-debug` | Windows | MSVC (`cl`) | Debug | `build/Windows/win-debug/` |
+| `win-release` | Windows | MSVC (`cl`) | Release | `build/Windows/win-release/` |
+| `linux-debug` | Linux | GCC (`g++`) | Debug | `build/Linux/linux-debug/` |
+| `linux-release` | Linux | GCC (`g++`) | Release | `build/Linux/linux-release/` |
+
+Every Configure Preset has a matching Build Preset with the same name. Platform conditions limit which presets are available on each host. The Windows configurations have been verified with MSVC and Ninja; the Linux presets are prepared but have not yet been run on Ubuntu.
+
+#### Preset hierarchy
+
+```text
+base (hidden)
+├── windows (hidden, inherits base, condition: Windows, compiler: cl)
+│   ├── win-debug   + config-debug
+│   └── win-release + config-release
+└── linux (hidden, inherits base, condition: Linux, compiler: g++)
+    ├── linux-debug   + config-debug
+    └── linux-release + config-release
+
+config-debug   (hidden): CMAKE_BUILD_TYPE=Debug
+config-release (hidden): CMAKE_BUILD_TYPE=Release
 ```
 
-Windows (PowerShell):
+- `base` defines the `Ninja` generator and `${sourceDir}/build/${hostSystemName}/${presetName}` output path.
+- `windows` and `linux` inherit the common configuration, add an operating-system condition and select a C++ compiler.
+- `config-debug` and `config-release` define the build type independently from the platform.
+- Final Configure Presets use **multiple inheritance** to combine platform and build-type settings.
+- Build Presets reference the corresponding Configure Presets and repeat the host condition, because `configurePreset` does not inherit that condition into a Build Preset.
+
+Use `cmake --list-presets=all` to inspect the available configurations; only the presets matching the host are selectable.
+
+#### Windows (PowerShell, MSVC + Ninja)
 
 ```powershell
-.\build\Debug\bin\CalculatorApp.exe
+cmake --preset win-debug
+cmake --build --preset win-debug
+.\build\Windows\win-debug\bin\CalculatorApp.exe
+
+cmake --preset win-release
+cmake --build --preset win-release
+.\build\Windows\win-release\bin\CalculatorApp.exe
 ```
 
-Ubuntu:
+The MSVC command-line environment must be initialized (for example, Developer PowerShell for Visual Studio). Declaring `CMAKE_CXX_COMPILER=cl` in a preset does not initialize MSVC by itself.
+
+#### Ubuntu (GCC + Ninja)
 
 ```bash
-./build/Debug/bin/CalculatorApp
+cmake --preset linux-debug
+cmake --build --preset linux-debug
+./build/Linux/linux-debug/bin/CalculatorApp
+
+cmake --preset linux-release
+cmake --build --preset linux-release
+./build/Linux/linux-release/bin/CalculatorApp
 ```
 
-To configure Release separately:
+Expected output for both build types:
+
+```text
+2 + 3 = 5
+Sum = 10
+```
+
+A **Configure Preset** generates the build system and stores configuration in the corresponding build directory. A **Build Preset** invokes the already configured build; it does not replace the initial configuration step.
+
+#### Manual configuration (without presets)
+
+For comparison with earlier lessons, CMake can still be invoked explicitly:
 
 ```bash
-cmake -S . -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build/Release
+cmake -S . -B build/manual-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/manual-debug
 ```
 
-When using MSVC and Ninja from a Windows terminal, run in an initialized MSVC development environment. VS Code with CMake Tools can select the MSVC kit for you.
+This produces a separate output tree and does not change the preset configurations.
 
 ### Shared-library outputs
 
@@ -135,10 +190,10 @@ The application and the math library use explicit output directories set with `s
 | `LIBRARY_OUTPUT_DIRECTORY` | `CalculatorMath` | `${CMAKE_BINARY_DIR}/lib` |
 | `ARCHIVE_OUTPUT_DIRECTORY` | `CalculatorMath` | `${CMAKE_BINARY_DIR}/lib` |
 
-With Ninja and MSVC, the relevant files are:
+With the `win-debug` preset (Ninja + MSVC), the relevant files are:
 
 ```text
-build/Debug/
+build/Windows/win-debug/
 ├── bin/
 │   ├── CalculatorApp.exe
 │   └── CalculatorMath.dll
@@ -146,10 +201,10 @@ build/Debug/
     └── CalculatorMath.lib  # DLL import library
 ```
 
-On Ubuntu with GCC, expect:
+With the `linux-debug` preset (Ninja + GCC), expect:
 
 ```text
-build/Debug/
+build/Linux/linux-debug/
 ├── bin/
 │   └── CalculatorApp
 └── lib/
@@ -158,7 +213,7 @@ build/Debug/
 
 On Windows, the DLL is classified by CMake as a **runtime** output, while its `.lib` import library is an **archive** output. Placing the DLL next to the EXE lets the Windows loader find it without a manual `PATH` change. On Linux, CMake normally sets a build-tree RPATH so the executable can locate the SO in the build tree.
 
-Directories such as `build/Debug/app/` and `build/Debug/math/` are **expected**: `add_subdirectory()` creates corresponding build directories, which hold intermediate files (e.g., `.obj`). Output-directory properties do not move those intermediate files.
+Directories such as `build/Windows/win-debug/app/` and `build/Windows/win-debug/math/` are **expected**: `add_subdirectory()` creates corresponding build directories, which hold intermediate files (e.g., `.obj`). Output-directory properties do not move those intermediate files.
 
 ### Explicit shared-library exports (`GenerateExportHeader`)
 
@@ -172,7 +227,7 @@ generate_export_header(CalculatorMath
 )
 ```
 
-This produces `calculator_math_export.h` in `${CMAKE_CURRENT_BINARY_DIR}` (e.g., `build/Debug/math/`). The header is generated during CMake configuration and should **not** be checked into Git. It is included from the public source header:
+This produces `calculator_math_export.h` in `${CMAKE_CURRENT_BINARY_DIR}` (e.g., `build/Windows/win-debug/math/`). The header is generated during CMake configuration and should **not** be checked into Git. It is included from the public source header:
 
 ```cpp
 #pragma once
@@ -198,13 +253,13 @@ On compilers that support these visibility settings (such as GCC), symbols are h
 On Windows with the Visual Studio developer tools, exports can be inspected with:
 
 ```powershell
-dumpbin /exports .\build\Debug\bin\CalculatorMath.dll
+dumpbin /exports .\build\Windows\win-debug\bin\CalculatorMath.dll
 ```
 
 On Ubuntu, use:
 
 ```bash
-nm -D --defined-only build/Debug/lib/libCalculatorMath.so | c++filt
+nm -D --defined-only build/Linux/linux-debug/lib/libCalculatorMath.so | c++filt
 ```
 
 The exported math API should contain `add(int, int)` and `add_many(std::span<const int>)` (demangled types may display template details). Removing `CALCULATOR_MATH_EXPORT` from the `add_many()` declaration is an instructive negative test: with hidden visibility on GCC, the shared library builds, but linking the application fails because `add_many()` is not exported. Restore the macro after testing.
@@ -226,6 +281,7 @@ Before moving both runtime outputs into `bin/`, `CalculatorApp.exe` could not fi
 | `0.5.0` | Header-only `CalculatorUtils` with `add_library(... INTERFACE)` |
 | `0.6.0` | `add_many()` and transitive usage requirements; `PRIVATE` vs `PUBLIC` library dependencies |
 | `0.7.0` | `SHARED` math library; DLL loading, output directories and explicit API exports with `GenerateExportHeader` |
+| `0.8.0` | Cross-platform `CMakePresets.json`, Debug/Release, hidden presets, conditions and multiple inheritance |
 
 Previous stages are learning milestones; they are not duplicated in separate source directories. Git history starts with the actual first commit rather than reconstructing earlier commits.
 
@@ -235,5 +291,6 @@ Previous stages are learning milestones; they are not duplicated in separate sou
 - `CalculatorMath` keeps `CalculatorUtils` as a private implementation detail; its public API does not include utility-library headers.
 - Libraries declare the include paths and language features that their consumers require.
 - `CalculatorMath` explicitly marks its exported functions; non-API symbols are hidden by default where supported.
-- The project uses portable CMake paths, with no hardcoded MSVC or GCC options.
+- The project uses portable CMake paths; compiler selection (`cl`/`g++`) is declared in host-specific presets rather than hardcoded in `CMakeLists.txt`.
+- Share `CMakePresets.json` in Git, exclude `CMakeUserPresets.json` (if used) and generated `build/` trees.
 - There are currently no automated tests, external package dependencies or installation rules. Those are topics for later lessons.
