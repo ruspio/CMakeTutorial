@@ -123,5 +123,57 @@
                 "rhs": "Linux"
             }
         }
+    ],
+    "testPresets": [
+        {
+            "name": "test-base",
+            "hidden": true,
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            }
+        },
+        {
+            "name": "win-debug",
+            "inherits": "test-base",
+            "configurePreset": "win-debug",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "win-release",
+            "inherits": "test-base",
+            "configurePreset": "win-release",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "linux-debug",
+            "inherits": "test-base",
+            "configurePreset": "linux-debug",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "linux-release",
+            "inherits": "test-base",
+            "configurePreset": "linux-release",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        }
     ]
 }

@@ -11,9 +11,9 @@ Development environments:
 
 | Project | Topics | Status |
 | --- | --- | --- |
-| [Calculator](projects/Calculator/README.md) | Executables, `STATIC` / `SHARED` / `INTERFACE` libraries, dependencies, symbol exports, cross-platform CMake Presets | **v0.8.0 — complete (Windows verified)** |
+| [Calculator](projects/Calculator/README.md) | Executables, `STATIC` / `SHARED` / `INTERFACE` libraries, target dependencies, symbol exports, cross-platform CMake Presets, CTest | **v0.9.0 — complete (Windows verified)** |
 | Logger | Reusable libraries, public APIs, shared libraries | Planned |
-| DataProcessor | External dependencies, CTest, automated tests | Planned |
+| DataProcessor | External dependencies and data processing | Planned |
 | PackageDemo | Installation, target exports and packaging | Planned |
 
 ## Repository layout
@@ -35,9 +35,12 @@ CMakeTutorial/
         │   ├── CMakeLists.txt
         │   ├── include/calculator_math.h
         │   └── src/math.cpp
-        └── utils/
+        ├── utils/
+        │   ├── CMakeLists.txt
+        │   └── include/calculator/number_utils.h
+        └── tests/
             ├── CMakeLists.txt
-            └── include/calculator/number_utils.h
+            └── main.cpp
 ```
 
 Each project has **its own top-level `CMakeLists.txt`** and can be configured and built independently. The repository root intentionally has **no** `CMakeLists.txt`.
@@ -92,9 +95,35 @@ Expected output on either platform:
 Sum = 10
 ```
 
-Release builds use the analogous presets: `win-release` or `linux-release`. Run the matching configure preset before the build preset on the first build. The Windows configurations have been built and run successfully; the Ubuntu preset setup is defined but has not yet been verified on Ubuntu.
+Release builds use the analogous presets: `win-release` or `linux-release`. Run the matching configure preset before the build preset on the first build. The Windows Debug/Release configurations have been built, run and tested successfully; the Ubuntu presets are prepared but have not yet been verified on Ubuntu.
 
 Build artifacts live under `projects/Calculator/build/<OS>/<preset>/` and must **not** be committed. See the [Calculator README](projects/Calculator/README.md#cmake-presets) for the preset hierarchy and full build instructions.
+
+## Test the Calculator
+
+Calculator v0.9.0 adds a separate `CalculatorTests` executable and registers the `MathBasic` test through **CTest**. Run tests *after* configuring and building the matching preset, from `projects/Calculator/`:
+
+**Windows (PowerShell):**
+
+```powershell
+cmake --preset win-debug
+cmake --build --preset win-debug
+ctest --preset win-debug
+
+cmake --preset win-release
+cmake --build --preset win-release
+ctest --preset win-release
+```
+
+**Ubuntu:**
+
+```bash
+cmake --preset linux-debug
+cmake --build --preset linux-debug
+ctest --preset linux-debug
+```
+
+The `MathBasic` test checks the results of `add()` and `add_many()`. The test presets display output on failure and report an error if no tests are registered. Use `ctest --preset win-debug -N` to list tests without running them. Test builds can be disabled with `-DBUILD_TESTING=OFF` at configuration time; then no tests are registered. See [Testing with CTest](projects/Calculator/README.md#testing-with-ctest) for details.
 
 ## Visual Studio Code
 
@@ -123,12 +152,13 @@ For MSVC command-line builds, use an initialized Visual Studio developer environ
 6. **v0.6.0:** implementation dependencies and `PRIVATE` vs `PUBLIC`.
 7. **v0.7.0:** `SHARED` library, DLL loading, output directories and `GenerateExportHeader`.
 8. **v0.8.0:** CMake Presets, Debug/Release, platform conditions and multiple inheritance.
-9. **Next:** CTest and automated tests; then external packages, installation and packaging.
+9. **v0.9.0:** CTest, a dedicated test executable, positive/negative tests and Test Presets.
+10. **Next:** external package dependencies, installation and packaging.
 
 See the [Calculator README](projects/Calculator/README.md) for its target graph, public API and detailed exercise history.
 
 ## Version control
 
-Keep source files, CMake configuration, documentation and shareable editor settings under Git. Exclude generated build trees, local caches and user-specific configuration. Project milestones may be marked with tags such as `calculator-v0.8.0` after the corresponding commit is created. Commit the shared `CMakePresets.json`, but keep user-specific `CMakeUserPresets.json` out of Git.
+Keep source files, CMake configuration, documentation and shareable editor settings under Git. Exclude generated build trees, local caches and user-specific configuration. Project milestones may be marked with tags such as `calculator-v0.9.0` after the corresponding commit is created. Commit the shared `CMakePresets.json`, but keep user-specific `CMakeUserPresets.json` out of Git.
 
 This repository is an evolving learning environment, not a production-ready C++ framework.

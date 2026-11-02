@@ -2,7 +2,7 @@
 
 A small C++20 application used to learn **Modern CMake** through incremental exercises.
 
-**Current stage: v0.8.0** — a multi-directory C++20 project with a `SHARED` math library (DLL/SO), a private header-only `INTERFACE` dependency, explicit symbol exports via `GenerateExportHeader`, and cross-platform Debug/Release CMake Presets.
+**Current stage: v0.9.0** — a multi-directory C++20 project with a `SHARED` math library (DLL/SO), a private header-only `INTERFACE` dependency, explicit symbol exports via `GenerateExportHeader`, cross-platform CMake Presets and automated testing with CTest.
 
 ## Project layout
 
@@ -20,14 +20,17 @@ Calculator/
 │   │   └── calculator_math.h
 │   └── src/
 │       └── math.cpp
-└── utils/
+├── utils/
+│   ├── CMakeLists.txt
+│   └── include/
+│       └── calculator/
+│           └── number_utils.h
+└── tests/
     ├── CMakeLists.txt
-    └── include/
-        └── calculator/
-            └── number_utils.h
+    └── main.cpp
 ```
 
-The root `CMakeLists.txt` declares the project (`Calculator`, version `0.8.0`) and includes the `math`, `app`, and `utils` modules using `add_subdirectory()`. The project-local `CMakePresets.json` defines repeatable configurations for Windows and Linux.
+The root `CMakeLists.txt` declares the project (`Calculator`, version `0.9.0`) and includes the `utils`, `math`, and `app` modules using `add_subdirectory()`. It also uses `include(CTest)` and conditionally adds `tests/` when `BUILD_TESTING` is enabled. The project-local `CMakePresets.json` defines repeatable configuration, build and test presets for Windows and Linux.
 
 ## CMake targets
 
@@ -36,6 +39,7 @@ The root `CMakeLists.txt` declares the project (`Calculator`, version `0.8.0`) a
 | `CalculatorApp` | `EXECUTABLE` | Compiles `app/main.cpp` and demonstrates the public math API |
 | `CalculatorMath` | `SHARED` | Compiles `math/src/math.cpp` and exports `add(int, int)` and `add_many(std::span<const int>)` |
 | `CalculatorUtils` | `INTERFACE` | Provides the header-only `calculator::sum(std::span<const int>)` implementation |
+| `CalculatorTests` | `EXECUTABLE` | Checks the public math API and returns a nonzero exit code when a check fails |
 
 ### Dependency graph
 
@@ -49,6 +53,8 @@ CalculatorApp (EXECUTABLE)
                               ├── INTERFACE include directory: utils/include/
                               └── INTERFACE C++20 requirement
 ```
+
+The separate `CalculatorTests` executable also links `CalculatorMath` privately, but does not depend on `CalculatorApp`. Both executables are written to `bin/` so they can load `CalculatorMath.dll` on Windows.
 
 `CalculatorApp` depends directly only on `CalculatorMath`. Its source code includes `calculator_math.h`, but does not directly include headers from `CalculatorUtils`.
 
@@ -109,7 +115,7 @@ Requirements: **CMake 3.25+**, **Ninja**, and a **C++20-capable compiler** (MSVC
 | `linux-debug` | Linux | GCC (`g++`) | Debug | `build/Linux/linux-debug/` |
 | `linux-release` | Linux | GCC (`g++`) | Release | `build/Linux/linux-release/` |
 
-Every Configure Preset has a matching Build Preset with the same name. Platform conditions limit which presets are available on each host. The Windows configurations have been verified with MSVC and Ninja; the Linux presets are prepared but have not yet been run on Ubuntu.
+Every Configure Preset has a matching Build Preset and Test Preset with the same name. Platform conditions limit which presets are available on each host. Windows configurations and tests have been verified with MSVC and Ninja; the Linux presets are prepared but have not yet been run on Ubuntu.
 
 #### Preset hierarchy
 
@@ -130,7 +136,7 @@ config-release (hidden): CMAKE_BUILD_TYPE=Release
 - `windows` and `linux` inherit the common configuration, add an operating-system condition and select a C++ compiler.
 - `config-debug` and `config-release` define the build type independently from the platform.
 - Final Configure Presets use **multiple inheritance** to combine platform and build-type settings.
-- Build Presets reference the corresponding Configure Presets and repeat the host condition, because `configurePreset` does not inherit that condition into a Build Preset.
+- Build Presets and Test Presets reference the corresponding Configure Presets and repeat the host condition, because `configurePreset` does not automatically inherit that condition.
 
 Use `cmake --list-presets=all` to inspect the available configurations; only the presets matching the host are selectable.
 
@@ -167,7 +173,7 @@ Expected output for both build types:
 Sum = 10
 ```
 
-A **Configure Preset** generates the build system and stores configuration in the corresponding build directory. A **Build Preset** invokes the already configured build; it does not replace the initial configuration step.
+A **Configure Preset** generates the build system and stores configuration in the corresponding build directory. A **Build Preset** invokes the already configured build; it does not replace the initial configuration step. A **Test Preset** runs the tests registered in that build tree. The matching `ctest --preset <name>` commands are documented below.
 
 #### Manual configuration (without presets)
 
@@ -180,13 +186,112 @@ cmake --build build/manual-debug
 
 This produces a separate output tree and does not change the preset configurations.
 
+### Testing with CTest
+
+Calculator v0.9.0 adds `tests/main.cpp` and `tests/CMakeLists.txt`. The test program is a separate executable, not a test mode of `CalculatorApp`. It links `CalculatorMath` privately and checks both public functions:
+
+```cpp
+if (add(2, 3) != 5)
+{
+    std::cerr << "Test failed: add()\n";
+    return 1;
+}
+
+const std::array<int, 4> values{1, 2, 3, 4};
+
+if (add_many(values) != 10)
+{
+    std::cerr << "Test failed: add_many()\n";
+    return 1;
+}
+```
+
+The root `CMakeLists.txt` enables CTest and includes the tests only if `BUILD_TESTING` is enabled (the default):
+
+```cmake
+include(CTest)
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
+```
+
+Inside `tests/CMakeLists.txt`, a dedicated `CalculatorTests` executable is created from `main.cpp`, linked against `CalculatorMath` and placed in `${CMAKE_BINARY_DIR}/bin` (beside the DLL on Windows). CTest then registers it:
+
+```cmake
+add_test(
+    NAME MathBasic
+    COMMAND CalculatorTests
+)
+```
+
+`add_test()` only registers a command. The test executable performs the checks and exits with `0` for success or a nonzero code for failure. Since both checks are in one executable, CTest reports **one test** (`MathBasic`), not two separate tests.
+
+#### Test Presets
+
+The `testPresets` section in `CMakePresets.json` contains a hidden `test-base` with shared settings:
+
+```json
+{
+    "name": "test-base",
+    "hidden": true,
+    "output": {
+        "outputOnFailure": true
+    },
+    "execution": {
+        "noTestsAction": "error"
+    }
+}
+```
+
+All four test presets (`win-debug`, `win-release`, `linux-debug`, `linux-release`) inherit this configuration and refer to the corresponding Configure Preset. Platform conditions are repeated on the Test Presets.
+
+Run from `projects/Calculator/` after configuring and building:
+
+**Windows:**
+
+```powershell
+cmake --preset win-debug
+cmake --build --preset win-debug
+ctest --preset win-debug
+
+cmake --preset win-release
+cmake --build --preset win-release
+ctest --preset win-release
+```
+
+**Ubuntu:**
+
+```bash
+cmake --preset linux-debug
+cmake --build --preset linux-debug
+ctest --preset linux-debug
+
+cmake --preset linux-release
+cmake --build --preset linux-release
+ctest --preset linux-release
+```
+
+Windows Debug and Release both passed `MathBasic` (1/1 each). The Ubuntu commands are configured but not yet verified on Ubuntu.
+
+Useful diagnostics:
+
+```bash
+ctest --preset win-debug -N       # List registered tests without executing them
+ctest --preset win-debug -V       # Show verbose test output
+```
+
+A negative test was performed by deliberately checking `add(2, 3) != 6`; CTest correctly reported `MathBasic` as **Failed**, with the program output `Test failed: add()`. The original expected value (`5`) was restored afterwards. The test preset's `noTestsAction: "error"` prevents an empty test list from being mistakenly treated as a successful test run, which is important for CI/CD. CTest does not automatically rebuild modified test executables: use **Configure → Build → Test**.
+
+To disable building/registering tests, configure with `-DBUILD_TESTING=OFF` in a fresh build tree or by updating the cache, then rebuild. A Test Preset using `noTestsAction: "error"` will report an error when there are no tests.
+
 ### Shared-library outputs
 
 The application and the math library use explicit output directories set with `set_target_properties()`:
 
 | CMake property | Target(s) | Destination |
 | --- | --- | --- |
-| `RUNTIME_OUTPUT_DIRECTORY` | `CalculatorApp`, `CalculatorMath` | `${CMAKE_BINARY_DIR}/bin` |
+| `RUNTIME_OUTPUT_DIRECTORY` | `CalculatorApp`, `CalculatorMath`, `CalculatorTests` | `${CMAKE_BINARY_DIR}/bin` |
 | `LIBRARY_OUTPUT_DIRECTORY` | `CalculatorMath` | `${CMAKE_BINARY_DIR}/lib` |
 | `ARCHIVE_OUTPUT_DIRECTORY` | `CalculatorMath` | `${CMAKE_BINARY_DIR}/lib` |
 
@@ -196,6 +301,7 @@ With the `win-debug` preset (Ninja + MSVC), the relevant files are:
 build/Windows/win-debug/
 ├── bin/
 │   ├── CalculatorApp.exe
+│   ├── CalculatorTests.exe
 │   └── CalculatorMath.dll
 └── lib/
     └── CalculatorMath.lib  # DLL import library
@@ -206,7 +312,8 @@ With the `linux-debug` preset (Ninja + GCC), expect:
 ```text
 build/Linux/linux-debug/
 ├── bin/
-│   └── CalculatorApp
+│   ├── CalculatorApp
+│   └── CalculatorTests
 └── lib/
     └── libCalculatorMath.so
 ```
@@ -282,6 +389,7 @@ Before moving both runtime outputs into `bin/`, `CalculatorApp.exe` could not fi
 | `0.6.0` | `add_many()` and transitive usage requirements; `PRIVATE` vs `PUBLIC` library dependencies |
 | `0.7.0` | `SHARED` math library; DLL loading, output directories and explicit API exports with `GenerateExportHeader` |
 | `0.8.0` | Cross-platform `CMakePresets.json`, Debug/Release, hidden presets, conditions and multiple inheritance |
+| `0.9.0` | CTest, `CalculatorTests`, `MathBasic`, positive/negative test checks and cross-platform Test Presets |
 
 Previous stages are learning milestones; they are not duplicated in separate source directories. Git history starts with the actual first commit rather than reconstructing earlier commits.
 
@@ -293,4 +401,4 @@ Previous stages are learning milestones; they are not duplicated in separate sou
 - `CalculatorMath` explicitly marks its exported functions; non-API symbols are hidden by default where supported.
 - The project uses portable CMake paths; compiler selection (`cl`/`g++`) is declared in host-specific presets rather than hardcoded in `CMakeLists.txt`.
 - Share `CMakePresets.json` in Git, exclude `CMakeUserPresets.json` (if used) and generated `build/` trees.
-- There are currently no automated tests, external package dependencies or installation rules. Those are topics for later lessons.
+- Automated tests use CTest and Test Presets; there is currently no external test framework. External package dependencies and installation rules are topics for later lessons.
