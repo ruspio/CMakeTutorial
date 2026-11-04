@@ -2,7 +2,7 @@
 
 A small C++20 application used to learn **Modern CMake** through incremental exercises.
 
-**Current stage: v0.9.0** — a multi-directory C++20 project with a `SHARED` math library (DLL/SO), a private header-only `INTERFACE` dependency, explicit symbol exports via `GenerateExportHeader`, cross-platform CMake Presets and automated testing with CTest.
+**Current stage: v0.10.0** — a multi-directory C++20 project with a `SHARED` math library (DLL/SO), a private header-only `INTERFACE` dependency, explicit symbol exports via `GenerateExportHeader`, CMake Presets, CTest and a third-party {fmt} dependency resolved through `find_package()` with a `FetchContent` fallback.
 
 ## Project layout
 
@@ -30,13 +30,13 @@ Calculator/
     └── main.cpp
 ```
 
-The root `CMakeLists.txt` declares the project (`Calculator`, version `0.9.0`) and includes the `utils`, `math`, and `app` modules using `add_subdirectory()`. It also uses `include(CTest)` and conditionally adds `tests/` when `BUILD_TESTING` is enabled. The project-local `CMakePresets.json` defines repeatable configuration, build and test presets for Windows and Linux.
+The root `CMakeLists.txt` declares the project (`Calculator`, version `0.10.0`), resolves the external {fmt} 12.2.0 dependency, and includes the `utils`, `math`, and `app` modules using `add_subdirectory()`. It also uses `include(CTest)` and conditionally adds `tests/` when `BUILD_TESTING` is enabled. The project-local `CMakePresets.json` defines repeatable configuration, build and test presets for Windows and Linux.
 
 ## CMake targets
 
 | Target | Kind | Responsibility |
 | --- | --- | --- |
-| `CalculatorApp` | `EXECUTABLE` | Compiles `app/main.cpp` and demonstrates the public math API |
+| `CalculatorApp` | `EXECUTABLE` | Compiles `app/main.cpp`, calls the math API and formats output using external {fmt} |
 | `CalculatorMath` | `SHARED` | Compiles `math/src/math.cpp` and exports `add(int, int)` and `add_many(std::span<const int>)` |
 | `CalculatorUtils` | `INTERFACE` | Provides the header-only `calculator::sum(std::span<const int>)` implementation |
 | `CalculatorTests` | `EXECUTABLE` | Checks the public math API and returns a nonzero exit code when a check fails |
@@ -45,6 +45,7 @@ The root `CMakeLists.txt` declares the project (`Calculator`, version `0.9.0`) a
 
 ```text
 CalculatorApp (EXECUTABLE)
+├── PRIVATE -> fmt::fmt (third-party compiled library)
 └── PRIVATE -> CalculatorMath (SHARED)
                ├── PUBLIC include directory: math/include/
                ├── PUBLIC generated header directory: build/<OS>/<preset>/math/
@@ -56,7 +57,7 @@ CalculatorApp (EXECUTABLE)
 
 The separate `CalculatorTests` executable also links `CalculatorMath` privately, but does not depend on `CalculatorApp`. Both executables are written to `bin/` so they can load `CalculatorMath.dll` on Windows.
 
-`CalculatorApp` depends directly only on `CalculatorMath`. Its source code includes `calculator_math.h`, but does not directly include headers from `CalculatorUtils`.
+`CalculatorApp` depends directly on `CalculatorMath` and `fmt::fmt`. It includes `calculator_math.h` and `<fmt/format.h>`, but does not directly include headers from `CalculatorUtils`. The external {fmt} dependency is `PRIVATE` to the application.
 
 `CalculatorMath` uses `CalculatorUtils` internally in `math.cpp`. The `CalculatorUtils` include directory is available while compiling `CalculatorMath`, but is **not** propagated as a compile-time usage requirement to `CalculatorApp`.
 
@@ -70,20 +71,20 @@ The shared `CalculatorMath` library compiles the inline utility implementation a
 
 ## Source example
 
-`app/main.cpp` uses only the public `CalculatorMath` API:
+`app/main.cpp` calls the public `CalculatorMath` API and formats its output with {fmt}:
 
 ```cpp
 #include <array>
-#include <iostream>
+#include <fmt/format.h>
 
 #include "calculator_math.h"
 
 int main()
 {
-    const std::array<int, 4> values = {1, 2, 3, 4};
+    const std::array<int, 4> values{1, 2, 3, 4};
 
-    std::cout << "2 + 3 = " << add(2, 3) << '\n';
-    std::cout << "Sum = " << add_many(values) << '\n';
+    fmt::print("2 + 3 = {}\n", add(2, 3));
+    fmt::print("Sum = {}\n", add_many(values));
 
     return 0;
 }
@@ -102,7 +103,7 @@ Sum = 10
 
 ## Build
 
-Requirements: **CMake 3.25+**, **Ninja**, and a **C++20-capable compiler** (MSVC on Windows or GCC on Ubuntu). Run commands from the `projects/Calculator/` directory.
+Requirements: **CMake 3.25+**, **Ninja**, and a **C++20-capable compiler** (MSVC on Windows or GCC on Ubuntu). Git and network access are needed for the initial `FetchContent` download unless a compatible {fmt} package is already installed. Run commands from the `projects/Calculator/` directory.
 
 ### CMake Presets
 
@@ -115,7 +116,7 @@ Requirements: **CMake 3.25+**, **Ninja**, and a **C++20-capable compiler** (MSVC
 | `linux-debug` | Linux | GCC (`g++`) | Debug | `build/Linux/linux-debug/` |
 | `linux-release` | Linux | GCC (`g++`) | Release | `build/Linux/linux-release/` |
 
-Every Configure Preset has a matching Build Preset and Test Preset with the same name. Platform conditions limit which presets are available on each host. Windows configurations and tests have been verified with MSVC and Ninja; the Linux presets are prepared but have not yet been run on Ubuntu.
+Every Configure Preset has a matching Build Preset and Test Preset with the same name. Platform conditions limit which presets are available on each host. Windows/MSVC + Ninja and CTest have been verified for both build types before this lesson. In v0.10.0, the {fmt} fallback path was verified on Windows Debug; Windows Release was verified with the initial FetchContent-only integration. The installed-package path and Ubuntu have not yet been verified.
 
 #### Preset hierarchy
 
@@ -185,6 +186,69 @@ cmake --build build/manual-debug
 ```
 
 This produces a separate output tree and does not change the preset configurations.
+
+### External dependency: {fmt}
+
+Version 0.10.0 integrates [{fmt}](https://fmt.dev/) 12.2.0 as an external library used **only by `CalculatorApp`**. The application links `fmt::fmt` with `PRIVATE` visibility. `CalculatorMath`, `CalculatorUtils` and `CalculatorTests` do not depend on {fmt}.
+
+The root `CMakeLists.txt` first searches for the **exact** package version. If it is unavailable, it falls back to a Git-based `FetchContent` declaration:
+
+```cmake
+include(FetchContent)
+
+find_package(fmt 12.2.0 EXACT CONFIG QUIET)
+
+if(fmt_FOUND)
+    message(STATUS "Using installed fmt")
+else()
+    message(STATUS "fmt not found, trying to get from GIT")
+
+    FetchContent_Declare(
+        fmt
+        GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+        GIT_TAG 12.2.0
+    )
+    FetchContent_MakeAvailable(fmt)
+endif()
+```
+
+`CONFIG` requests a CMake package configuration (such as `fmt-config.cmake`). `EXACT` avoids silently mixing different {fmt} versions. `QUIET` allows a missing package to trigger the fallback; using `REQUIRED` here would stop configuration before `FetchContent` could run. The application uses the **same** `fmt::fmt` target regardless of where the dependency came from.
+
+The application links the dependency with:
+
+```cmake
+target_link_libraries(CalculatorApp
+    PRIVATE
+        CalculatorMath
+        fmt::fmt
+)
+```
+
+And uses `fmt::print()` in `app/main.cpp`. Outputs remain unchanged:
+
+```text
+2 + 3 = 5
+Sum = 10
+```
+
+`FetchContent_MakeAvailable(fmt)` makes the sources and targets available during the **configure** step. Downloaded sources and build files normally appear under the configuration's `_deps/` directory and must not be committed. This allows the dependency to be reused on subsequent local configurations. A fixed tag provides more stable behavior than a moving branch; a fixed commit hash provides stronger immutability.
+
+#### Test status
+
+- **Windows Debug (fallback):** configured, compiled, and passed CTest (`MathBasic`: 1/1). CMake printed `fmt not found, trying to get from GIT` and `{fmt} version: 12.2.0`. The application output was verified separately in the initial FetchContent-only exercise.
+- **Windows Release:** the FetchContent-only variant was configured, built and passed CTest in the first part of the lesson. The subsequent `find_package()` fallback branch has not yet been separately retested in Release.
+- **Installed-package branch:** code-reviewed but not yet executed against an installed {fmt} 12.2.0 package.
+- **Ubuntu:** presets exist, but have not been executed on Ubuntu.
+
+#### Point CMake to an installed package
+
+When an installed package has a matching architecture, toolchain and version, pass its **installation prefix** through `CMAKE_PREFIX_PATH` (not the path to an individual `.lib` file):
+
+```powershell
+cmake --preset win-debug -DCMAKE_PREFIX_PATH="C:/path/to/fmt-install-prefix"
+```
+
+A successful package lookup reports `Using installed fmt`. This command updates the preset's build-tree cache; use a separate build directory for an isolated comparison if you do not want to change the existing build configuration.
 
 ### Testing with CTest
 
@@ -390,6 +454,7 @@ Before moving both runtime outputs into `bin/`, `CalculatorApp.exe` could not fi
 | `0.7.0` | `SHARED` math library; DLL loading, output directories and explicit API exports with `GenerateExportHeader` |
 | `0.8.0` | Cross-platform `CMakePresets.json`, Debug/Release, hidden presets, conditions and multiple inheritance |
 | `0.9.0` | CTest, `CalculatorTests`, `MathBasic`, positive/negative test checks and cross-platform Test Presets |
+| `0.10.0` | External {fmt} 12.2.0 dependency; `FetchContent`, `find_package(CONFIG)` and installed-package fallback |
 
 Previous stages are learning milestones; they are not duplicated in separate source directories. Git history starts with the actual first commit rather than reconstructing earlier commits.
 
@@ -401,4 +466,5 @@ Previous stages are learning milestones; they are not duplicated in separate sou
 - `CalculatorMath` explicitly marks its exported functions; non-API symbols are hidden by default where supported.
 - The project uses portable CMake paths; compiler selection (`cl`/`g++`) is declared in host-specific presets rather than hardcoded in `CMakeLists.txt`.
 - Share `CMakePresets.json` in Git, exclude `CMakeUserPresets.json` (if used) and generated `build/` trees.
-- Automated tests use CTest and Test Presets; there is currently no external test framework. External package dependencies and installation rules are topics for later lessons.
+- Automated tests use CTest and Test Presets; there is currently no external test framework.
+- External {fmt} 12.2.0 is linked privately to `CalculatorApp` via either `find_package()` or `FetchContent`; installation/export rules for our own targets remain future topics.

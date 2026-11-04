@@ -8,6 +8,7 @@ target_sources(CalculatorApp
 target_link_libraries(CalculatorApp
     PRIVATE
         CalculatorMath
+        fmt::fmt
 )
 
 set_target_properties(CalculatorApp

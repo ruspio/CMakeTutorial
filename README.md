@@ -11,7 +11,7 @@ Development environments:
 
 | Project | Topics | Status |
 | --- | --- | --- |
-| [Calculator](projects/Calculator/README.md) | Executables, `STATIC` / `SHARED` / `INTERFACE` libraries, target dependencies, symbol exports, cross-platform CMake Presets, CTest | **v0.9.0 — complete (Windows verified)** |
+| [Calculator](projects/Calculator/README.md) | Executables, `STATIC` / `SHARED` / `INTERFACE` libraries, target dependencies, symbol exports, CMake Presets, CTest, external dependencies (`fmt`) | **v0.10.0 — Windows Debug verified; other paths pending** |
 | Logger | Reusable libraries, public APIs, shared libraries | Planned |
 | DataProcessor | External dependencies and data processing | Planned |
 | PackageDemo | Installation, target exports and packaging | Planned |
@@ -49,6 +49,7 @@ Each project has **its own top-level `CMakeLists.txt`** and can be configured an
 
 - **CMake 3.25+**
 - **Ninja**
+- **Git and network access** for first-time `FetchContent` fallback downloads
 - A compiler supporting **C++20**: MSVC on Windows or GCC on Ubuntu
 - Optional, but recommended: **Visual Studio Code** with **CMake Tools** and **C/C++** extensions
 
@@ -65,7 +66,7 @@ On Windows, install Visual Studio or Visual Studio Build Tools with the **Deskto
 
 ## Build the Calculator
 
-The Calculator has project-local **CMake Presets** for Windows/MSVC and Linux/GCC. Run the commands below from `projects/Calculator/` (not the repository root):
+The Calculator has project-local **CMake Presets** for Windows/MSVC and Linux/GCC. Version 0.10.0 resolves {fmt} 12.2.0 from an installed CMake package when available, or uses `FetchContent` to retrieve its sources. Run the commands below from `projects/Calculator/` (not the repository root):
 
 ```bash
 cd projects/Calculator
@@ -95,9 +96,9 @@ Expected output on either platform:
 Sum = 10
 ```
 
-Release builds use the analogous presets: `win-release` or `linux-release`. Run the matching configure preset before the build preset on the first build. The Windows Debug/Release configurations have been built, run and tested successfully; the Ubuntu presets are prepared but have not yet been verified on Ubuntu.
+Release builds use the analogous presets: `win-release` or `linux-release`. Run the matching configure preset before the build preset on the first build. The Windows Debug fallback was configured, built and tested successfully with fmt 12.2.0; the application was separately run successfully with the original FetchContent-only integration. The FetchContent-only implementation was also verified with Windows Release; the new fallback condition in Release, the installed-package path and Ubuntu have not yet been independently verified in those environments.
 
-Build artifacts live under `projects/Calculator/build/<OS>/<preset>/` and must **not** be committed. See the [Calculator README](projects/Calculator/README.md#cmake-presets) for the preset hierarchy and full build instructions.
+Build artifacts live under `projects/Calculator/build/<OS>/<preset>/` and must **not** be committed. See the [Calculator README](projects/Calculator/README.md#cmake-presets) for the preset hierarchy and [external-dependency setup](projects/Calculator/README.md#external-dependency-fmt).
 
 ## Test the Calculator
 
@@ -153,12 +154,13 @@ For MSVC command-line builds, use an initialized Visual Studio developer environ
 7. **v0.7.0:** `SHARED` library, DLL loading, output directories and `GenerateExportHeader`.
 8. **v0.8.0:** CMake Presets, Debug/Release, platform conditions and multiple inheritance.
 9. **v0.9.0:** CTest, a dedicated test executable, positive/negative tests and Test Presets.
-10. **Next:** external package dependencies, installation and packaging.
+10. **v0.10.0:** external {fmt} dependency, `FetchContent`, `find_package(CONFIG)` and fallback selection.
+11. **Next:** installing/exporting CMake packages and consuming them from another project.
 
 See the [Calculator README](projects/Calculator/README.md) for its target graph, public API and detailed exercise history.
 
 ## Version control
 
-Keep source files, CMake configuration, documentation and shareable editor settings under Git. Exclude generated build trees, local caches and user-specific configuration. Project milestones may be marked with tags such as `calculator-v0.9.0` after the corresponding commit is created. Commit the shared `CMakePresets.json`, but keep user-specific `CMakeUserPresets.json` out of Git.
+Keep source files, CMake configuration, documentation and shareable editor settings under Git. Exclude generated build trees, local caches and user-specific configuration. Project milestones may be marked with tags such as `calculator-v0.10.0` after the corresponding commit is created. Commit the shared `CMakePresets.json`, but keep user-specific `CMakeUserPresets.json` out of Git.
 
 This repository is an evolving learning environment, not a production-ready C++ framework.
